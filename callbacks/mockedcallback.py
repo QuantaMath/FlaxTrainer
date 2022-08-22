@@ -1,15 +1,18 @@
+from unittest.mock import Mock
 from callbacks import Callback
-
+#from ..FlaxTrainer.trainer import TrainerBaseModule
 
 class MockedCallback(object):
-    def __init__(self):
-        pass
-    
+    def __init__(self, stop_train=True):
+        super(MockedCallback, self).__init__()
+        self.stop_train = stop_train
+        self.trainer = None
 
     def on_train_start(self, **kwargs):
         print("Start training....")
     
     def on_train_end(self, **kwargs):
+        print(self.trainer.state)
         print("Finsih training....")
 
     def on_train_step_start(self, **kwargs):
@@ -19,11 +22,13 @@ class MockedCallback(object):
         print("Finsih training step ....")
     
     def on_train_epoch_start(self, **kwargs):
-        print("Finsih training epoch....")
+        print("Start training epoch....")
         
     
     def on_train_epoch_end(self, **kwargs):
-        print("Finsih training epoch....")
+        if kwargs['epoch_idx'] == 10:
+            self.trainer.stop_train()
+        print(" Finsih training epoch....")
 
     def on_train_batch_start(self, **kwargs):
         print("Start training batch....")
@@ -97,3 +102,5 @@ class MockedCallback(object):
     def on_save_checkpoint(self, **kwargs):
         print("Checkpoint save....")
 
+    def set_trainer(self, trainer):
+        self.trainer = trainer

@@ -1,12 +1,12 @@
-from gc import callbacks
-from typing import Any, Callable, Dict, Iterator, Tuple, List
-from collections import defaultdict
-
 import os
-from copy import copy
 import time
 import json
-from tqdm.auto import tqdm
+from copy import copy
+
+from tqdm import tqdm
+
+from typing import Any, Callable, Dict, Iterator, Tuple, List
+from collections import defaultdict
 
 # JAX ecosytems import 
 import jax
@@ -37,15 +37,14 @@ import torch.utils.data as data
 
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 
-
-from FlaxTrainer import TrainState
-
+from .trainstates import TrainState
 
 class TrainerBaseModule(object):
     """ Base class of trainer module fo training flax based artificial neural network"""
     def __init__(self):
         super().__init__()
         self.debug=False
+        self.train = True
 
     def init_model(self):
         raise NotImplementedError
@@ -53,24 +52,27 @@ class TrainerBaseModule(object):
     def bind_model(self):
         raise NotImplementedError
     
-    def create_function(self) -> Tuple(Callable[..., Any]):
+    def create_functions(self): #-> Callable[..., Any]:
         raise NotImplemented
 
-    def create_jitted_function(self):
+    def create_jitted_functions(self):
         
         if self.debug: # Skip jitted
             print("Skipped jitted due to debug=True")
             {
-                setattr(self, func.__name__, func) for func in self.create_function()
+                setattr(self, func.__name__, func) for func in self.create_functions()
             }
         else:
             {
-                setattr(self, func.__name__, jax.jit(func)) for func in self.create_function()
+                setattr(self, func.__name__, jax.jit(func)) for func in self.create_functions()
             }
 
 
     def init_logger(self):
         raise NotImplementedError
+
+    def stop_train(self):
+        self.train = False
 
 
 class TrainerModule(TrainerBaseModule):
@@ -81,7 +83,7 @@ class TrainerModule(TrainerBaseModule):
         model_hparams: Dict[str, Any],
         optimizer_hparams: Dict[str, Any],
         exmp_input: Any,
-        callbacks: List[Callback],
+        callbacks: set[Callback] = set(),
         seed: int = 42,
         logger_params: Dict[str, Any] | None = None,
         enable_progress_bar: bool = True,
@@ -107,7 +109,7 @@ class TrainerModule(TrainerBaseModule):
             check_val_every_n_epoch: The frequency with which the is evaluated
             on the validation set.
         """
-        super().__init__()
+        super(TrainerModule, self).__init__()
         self.model_class = model_class
         self.model_hparams = model_hparams
         self.optimizer_hparams = optimizer_hparams
@@ -116,7 +118,10 @@ class TrainerModule(TrainerBaseModule):
         self.seed = seed
         self.check_val_every_n_epoch = check_val_every_n_epoch
         self.exmp_input = exmp_input
+        
         self.callbacks = callbacks
+        [callback.set_trainer(self) for callback in callbacks]
+        [print(callback.trainer) for callback in callbacks]
         # Set of  hyperparameters to save
         self.config = {
             'model_class': model_class.__name__,
@@ -279,20 +284,20 @@ class TrainerModule(TrainerBaseModule):
                                        rng=self.state.rng)
 
 
-    def create_jitted_functions(self):
-        """
-        Create jitted version of the training and evaluation functions.
-        If self.debug is True, not jitted is applied.
-        """
+    # def create_jitted_functions(self):
+    #     """
+    #     Create jitted version of the training and evaluation functions.
+    #     If self.debug is True, not jitted is applied.
+    #     """
 
-        train_step, eval_step = self.create_functions()
-        if self.debug: # Skip jitted
-            print("Skipped jitted due to debug=True")
-            self.train_step = train_step
-            self.eval_step = eval_step
-        else:
-            self.train_step = jax.jit(train_step)
-            self.eval_step = jax.jit(eval_step)
+    #     train_step, eval_step = self.create_functions()
+    #     if self.debug: # Skip jitted
+    #         print("Skipped jitted due to debug=True")
+    #         self.train_step = train_step
+    #         self.eval_step = eval_step
+    #     else:
+    #         self.train_step = jax.jit(train_step)
+    #         self.eval_step = jax.jit(eval_step)
 
 
     def create_functions(self) -> Tuple[Callable[[TrainState, Any], Tuple[TrainState, Dict]],
@@ -338,11 +343,12 @@ class TrainerModule(TrainerBaseModule):
         self.init_optimizer(num_epochs, len(train_loader))
         # Prepare training loop
         self.on_training_start()
-        [callback.on_train_start() for callback in callbacks]
         best_eval_metrics = None
-        for epoch_idx in self.tracker(range(1, num_epochs + 1), desc='Epochs'):
-            train_metrics = self.train_epoch(train_loader)
+        for epoch_idx in self.tracker(range(1, num_epochs+1), desc='Epochs'):
 
+            if not self.train:
+                break
+            train_metrics = self.train_epoch(train_loader, epoch_idx=epoch_idx)
             self.logger.log_metrics(train_metrics, step=epoch_idx)
             self.on_training_epoch_end(epoch_idx)
             # Validation every N epochs
@@ -357,6 +363,7 @@ class TrainerModule(TrainerBaseModule):
                     best_eval_metrics.update(train_metrics)
                     self.save_model(step=epoch_idx)
                     self.save_metrics('best_eval', eval_metrics)
+        # Test best model if possible
         if test_loader is not None:
             self.load_model()
             test_metrics = self.eval_model(test_loader, log_prefix='test/')
@@ -364,11 +371,13 @@ class TrainerModule(TrainerBaseModule):
             self.save_metrics('test', test_metrics)
             best_eval_metrics.update(test_metrics)
         # Close logger
-        self.logger.finalize("success")
+        self.logger.finalize('success')
+        [callback.on_train_end() for callback in self.callbacks]
         return best_eval_metrics
 
+
     def train_epoch(self,
-                    train_loader: Iterator) -> Dict[str, Any]:
+                    train_loader: Iterator, epoch_idx: int) -> Dict[str, Any]:
         """
         Trains a model for one epoch.
 
@@ -381,15 +390,20 @@ class TrainerModule(TrainerBaseModule):
         """
 
         # Train model for one epoch, and log avg loss and accuracy
+
+        [callback.on_train_epoch_start() for callback in self.callbacks]
+
         metrics = defaultdict(float)
         num_train_steps = len(train_loader)
         start_time = time.time()
-        for batch in self.tracker(train_loader, desc='Training', leave=True):
+        for batch in self.tracker(train_loader, desc='Training', leave=False):
             self.state, step_metrics = self.train_step(self.state, batch)
             for key in step_metrics:
                 metrics['train/' + key] += step_metrics[key] / num_train_steps
         metrics = {key: metrics[key].item() for key in metrics}
         metrics['epochs_time'] = time.time() - start_time
+        
+        [callback.on_train_epoch_end(trainer=self, epoch_idx=epoch_idx) for callback in self.callbacks]
         return metrics
 
 
@@ -524,6 +538,7 @@ class TrainerModule(TrainerBaseModule):
         Args:
           step: Index of the step to save the model at, e.g. epoch.
         """
+        #[callback.on_save_checkpoint() for callback in callbacks]
         checkpoints.save_checkpoint(ckpt_dir=self.log_dir,
                                     target={'params': self.state.params,
                                             'batch_stats': self.state.batch_stats},
@@ -536,6 +551,7 @@ class TrainerModule(TrainerBaseModule):
         """
         Load model parameters and batch statistics from the logging directory.
         """
+        # [callback.on_load_checkpoint() for callback in callbacks]
         state_dict = checkpoints.restore_checkpoint(ckpt_dir=self.log_dir, target=None)
         self.state = TrainState.create(apply_fn=self.model.apply,
                                        params=state_dict['params'],

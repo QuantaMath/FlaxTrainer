@@ -1,0 +1,20 @@
+{
+    "model_class": "MLPRegressor",
+    "model_hparams": {
+        "hidden_dims": [
+            128,
+            128
+        ],
+        "output_dim": 1
+    },
+    "optimizer_hparams": {
+        "lr": 0.004
+    },
+    "logger_params": {
+        "base_log_dir": "./saved_models/"
+    },
+    "enable_progress_bar": true,
+    "debug": false,
+    "check_val_every_n_epoch": 5,
+    "seed": 42
+}

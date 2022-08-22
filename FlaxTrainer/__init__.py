@@ -1,2 +1,4 @@
-from FlaxTrainer.trainstates import TrainingModule
-from FlaxTrainer.trainer import TrainState
+from . import trainer
+from . import trainstates
+
+from .version import __version__

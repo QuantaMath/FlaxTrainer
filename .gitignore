@@ -1,0 +1,3 @@
+.test/
+.test/*
+simple_train.py
