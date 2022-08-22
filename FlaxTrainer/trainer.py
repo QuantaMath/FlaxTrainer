@@ -1,4 +1,4 @@
-from distutils.log import debug
+from gc import callbacks
 from typing import Any, Callable, Dict, Iterator, Tuple, List
 from collections import defaultdict
 
@@ -34,10 +34,11 @@ except ModuleNotFoundError:
 import torch
 import torch.utils.data as data
 
+
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 
 
-
+from FlaxTrainer import TrainState
 
 
 class TrainerBaseModule(object):
@@ -57,7 +58,7 @@ class TrainerBaseModule(object):
 
     def create_jitted_function(self):
         
-        if debug: # Skip jitted
+        if self.debug: # Skip jitted
             print("Skipped jitted due to debug=True")
             {
                 setattr(self, func.__name__, func) for func in self.create_function()
@@ -66,27 +67,28 @@ class TrainerBaseModule(object):
             {
                 setattr(self, func.__name__, jax.jit(func)) for func in self.create_function()
             }
-        
 
-        pass
 
     def init_logger(self):
         raise NotImplementedError
 
+
 class TrainerModule(TrainerBaseModule):
 
-    def __init__(self,
-                 model_class: nn.Module,
-                 model_hparams: Dict[str, Any],
-                 optimizer_hparams: Dict[str, Any],
-                 exmp_input: Any,
-                 callbacks: List[Callback]
-                 seed: int = 42,
-                 logger_params: Dict[str, Any] | None = None,
-                 enable_progress_bar: bool = True,
-                 debug: bool = False,
-                 check_val_every_n_epoch: int = 1,
-                 **kwargs):
+    def __init__(
+        self,
+        model_class: nn.Module,
+        model_hparams: Dict[str, Any],
+        optimizer_hparams: Dict[str, Any],
+        exmp_input: Any,
+        callbacks: List[Callback],
+        seed: int = 42,
+        logger_params: Dict[str, Any] | None = None,
+        enable_progress_bar: bool = True,
+        debug: bool = False,
+        check_val_every_n_epoch: int = 1,
+        **kwargs
+    ):
         """
         A basic Trainer module summarizing most common training functionalities
         like logging, model initialization, training loop, etc,
@@ -114,6 +116,7 @@ class TrainerModule(TrainerBaseModule):
         self.seed = seed
         self.check_val_every_n_epoch = check_val_every_n_epoch
         self.exmp_input = exmp_input
+        self.callbacks = callbacks
         # Set of  hyperparameters to save
         self.config = {
             'model_class': model_class.__name__,
@@ -335,6 +338,7 @@ class TrainerModule(TrainerBaseModule):
         self.init_optimizer(num_epochs, len(train_loader))
         # Prepare training loop
         self.on_training_start()
+        [callback.on_train_start() for callback in callbacks]
         best_eval_metrics = None
         for epoch_idx in self.tracker(range(1, num_epochs + 1), desc='Epochs'):
             train_metrics = self.train_epoch(train_loader)

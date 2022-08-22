@@ -8,13 +8,13 @@ class Callback(object):
     def on_train_start(self, **kwargs):
         pass
     
-    def on_train_stop(self, **kwargs):
+    def on_train_end(self, **kwargs):
         pass
 
     def on_train_step_start(self, **kwargs):
         pass
 
-    def on_train_step_stop(self, **kwargs):
+    def on_train_step_end(self, **kwargs):
         pass
     
     def on_train_epoch_start(self, **kwargs):
@@ -26,20 +26,20 @@ class Callback(object):
     def on_train_batch_start(self, **kwargs):
         pass
 
-    def on_train_batch_stop(self, **kwargs):
+    def on_train_batch_end(self, **kwargs):
         pass
 
 
     def on_validation_start(self, **kwargs):
         pass
     
-    def on_validation_stop(self, **kwargs):
+    def on_validation_end(self, **kwargs):
         pass
     
     def on_validation_step_start(self, **kwargs):
         pass
 
-    def on_validation_step_stop(self, **kwargs):
+    def on_validation_step_end(self, **kwargs):
         pass
     
     def on_validation_epoch_start(self, **kwargs):
@@ -51,20 +51,20 @@ class Callback(object):
     def on_validation_batch_start(self, **kwargs):
         pass
 
-    def on_validation_batch_stop(self, **kwargs):
+    def on_validation_batch_end(self, **kwargs):
         pass
 
 
     def on_test_start(self, **kwargs):
         pass
     
-    def on_test_stop(self, **kwargs):
+    def on_test_end(self, **kwargs):
         pass
     
     def on_test_step_start(self, **kwargs):
         pass
 
-    def on_test_step_stop(self, **kwargs):
+    def on_test_step_end(self, **kwargs):
         pass
     # 
     def on_test_epoch_start(self, **kwargs):
@@ -76,7 +76,7 @@ class Callback(object):
     def on_test_batch_start(self, **kwargs):
         pass
 
-    def on_test_batch_stop(self, **kwargs):
+    def on_test_batch_end(self, **kwargs):
         pass
 
 
