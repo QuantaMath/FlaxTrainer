@@ -12,7 +12,7 @@ class MockedCallback(object):
         print("Start training....")
     
     def on_train_end(self, **kwargs):
-        print(self.trainer.state)
+        #print(self.trainer.state)
         print("Finsih training....")
 
     def on_train_step_start(self, **kwargs):

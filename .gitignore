@@ -3,3 +3,6 @@
 simple_train.py
 __pycache__/
 *.pyc
+!**/__pycache__/
+saved_models/
+saved_models/MLPRegressor*
