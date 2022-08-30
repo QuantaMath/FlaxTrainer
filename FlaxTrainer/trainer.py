@@ -109,7 +109,7 @@ class TrainerModule(TrainerBaseModule):
         #model_class: nn.Module,
         #model_hparams: Dict[str, Any],
         optimizer_hparams: Dict[str, Any],
-        exmp_input: Any,
+        #exmp_input: Any,
         callbacks: set[Callback] = set(),
         seed: int = 42,
         logger_params: Dict[str, Any] | None = None,
@@ -164,14 +164,14 @@ class TrainerModule(TrainerBaseModule):
         # Create empty model: no parameters yet
         #self.model = self.model_class(**self.model_hparams)
         # Init trainer parts
-        self.init_logger(logger_params)
+        #self.init_logger(logger_params)
         self.create_jitted_functions()
         # self.init_model(exmp_input)
 
     def init_logger(
         self,
         state: TrainState,
-        logger_params: Dict | None = None
+        logger_params: Dict | None = None,
         ):
         """3
         Initializes of logger and creates a logging directory.
@@ -243,9 +243,9 @@ class TrainerModule(TrainerBaseModule):
                                 tx=None,
                                 opt_state=None)
         
-        self.init_logger(self.config['logger_params'], new_state)
+        self.init_logger( new_state, self.config['logger_params'])
         if tabulated: 
-            self.print_tabulate(exmp_input)
+            self.print_tabulate(model, exmp_input)
 
         return new_state
         
@@ -377,7 +377,7 @@ class TrainerModule(TrainerBaseModule):
     def train_model(
         self,
         model: nn.Module,
-        train_state: TrainState,
+        state: TrainState,
         train_loader : Iterator,
         val_loader : Iterator,
         test_loader : Iterator | None = None,
@@ -396,20 +396,22 @@ class TrainerModule(TrainerBaseModule):
           best model on the validation set.
         """
         # Create optimizer and the scheduler for the given number of epochs
-        self.init_optimizer(num_epochs, len(train_loader))
+        new_state = self.init_optimizer(state, num_epochs, len(train_loader))
         # Prepare training loop
         self.on_training_start()
+
+        
         best_eval_metrics = None
         for epoch_idx in self.tracker(range(1, num_epochs+1), desc='Epochs'):
 
             if not self.train:
                 break
-            train_metrics = self.train_epoch(train_loader, epoch_idx=epoch_idx)
+            train_metrics = self.train_epoch(new_state, train_loader, epoch_idx=epoch_idx)
             self.logger.log_metrics(train_metrics, step=epoch_idx)
             self.on_training_epoch_end(epoch_idx)
             # Validation every N epochs
             if epoch_idx % self.check_val_every_n_epoch == 0:
-                eval_metrics = self.eval_model(val_loader, log_prefix='val/')
+                eval_metrics = self.eval_model(new_state, val_loader, log_prefix='val/')
                 self.on_validation_epoch_end(epoch_idx, eval_metrics, val_loader)
                 self.logger.log_metrics(eval_metrics, step=epoch_idx)
                 self.save_metrics(f'eval_epoch_{str(epoch_idx).zfill(3)}', eval_metrics)
@@ -417,23 +419,26 @@ class TrainerModule(TrainerBaseModule):
                 if self.is_new_model_better(eval_metrics, best_eval_metrics):
                     best_eval_metrics = eval_metrics
                     best_eval_metrics.update(train_metrics)
-                    self.save_model(step=epoch_idx)
+                    self.save_model(new_state, step=epoch_idx)
                     self.save_metrics('best_eval', eval_metrics)
         # Test best model if possible
         if test_loader is not None:
-            self.load_model()
-            test_metrics = self.eval_model(test_loader, log_prefix='test/')
+            self.load_model(model, new_state)
+            test_metrics = self.eval_model(new_state, test_loader, log_prefix='test/')
             self.logger.log_metrics(test_metrics, step=epoch_idx)
             self.save_metrics('test', test_metrics)
             best_eval_metrics.update(test_metrics)
         # Close logger
         self.logger.finalize('success')
         [callback.on_train_end() for callback in self.callbacks]
-        return best_eval_metrics
+        return best_eval_metrics, new_state
 
 
-    def train_epoch(self,
-                    train_loader: Iterator, epoch_idx: int) -> Dict[str, Any]:
+    def train_epoch(
+        self,
+        state: TrainState,
+        train_loader: Iterator,
+        epoch_idx: int) -> Dict[str, Any]:
         """
         Trains a model for one epoch.
 
@@ -446,14 +451,14 @@ class TrainerModule(TrainerBaseModule):
         """
 
         # Train model for one epoch, and log avg loss and accuracy
-
+        
         [callback.on_train_epoch_start() for callback in self.callbacks]
 
         metrics = defaultdict(float)
         num_train_steps = len(train_loader)
         start_time = time.time()
         for batch in self.tracker(train_loader, desc='Training', leave=False):
-            self.state, step_metrics = self.train_step(self.state, batch)
+            state, step_metrics = self.train_step(state, batch)
             for key in step_metrics:
                 metrics['train/' + key] += step_metrics[key] / num_train_steps
         metrics = {key: metrics[key].item() for key in metrics}
@@ -463,9 +468,11 @@ class TrainerModule(TrainerBaseModule):
         return metrics
 
 
-    def eval_model(self,
-                   data_loader: Iterator,
-                   log_prefix: str | None = '') -> Dict[str, Any]:
+    def eval_model(
+        self,
+        state: TrainState,
+        data_loader: Iterator,
+        log_prefix: str | None = '') -> Dict[str, Any]:
         """
         Evaluate the model of a dataset.
 
@@ -481,7 +488,7 @@ class TrainerModule(TrainerBaseModule):
         metrics = defaultdict(float)
         num_elements = 0
         for batch in data_loader:
-            step_metrics = self.eval_step(self.state, batch)
+            step_metrics = self.eval_step(state, batch)
             batch_size = batch[0].shape[0] if isinstance(batch, (list, tuple)) else batch.shape[0]
             for key in step_metrics:
                 metrics[key] += step_metrics[key] * batch_size
@@ -583,8 +590,10 @@ class TrainerModule(TrainerBaseModule):
         """
         pass
 
-    def save_model(self,
-                   step: int = 0):
+    def save_model(
+        self,
+        state: TrainState,
+        step: int = 0):
         """
         Save current training state at certain training iteration. Only the model
         parameters and batch statistics are saved to reduce memory footprint. To
@@ -596,28 +605,29 @@ class TrainerModule(TrainerBaseModule):
         """
         #[callback.on_save_checkpoint() for callback in callbacks]
         checkpoints.save_checkpoint(ckpt_dir=self.log_dir,
-                                    target={'params': self.state.params,
-                                            'batch_stats': self.state.batch_stats},
+                                    target={'params': state.params,
+                                            'batch_stats': state.batch_stats},
                                     step=step,
                                     overwrite=True
                                     )
 
 
-    def load_model(self):
+    def load_model(self, model: nn.Module, state: TrainState):
         """
         Load model parameters and batch statistics from the logging directory.
         """
         # [callback.on_load_checkpoint() for callback in callbacks]
         state_dict = checkpoints.restore_checkpoint(ckpt_dir=self.log_dir, target=None)
-        self.state = TrainState.create(apply_fn=self.model.apply,
+        new_state = TrainState.create(apply_fn=model.apply,
                                        params=state_dict['params'],
                                        batch_stats=state_dict['batch_stats'],
                                        #Optimizer will be overwritten when training, starts
-                                       tx=self.state.tx if self.state.tx else optax.sgd(0.1),
-                                       rng=self.state.rng
+                                       tx=state.tx if state.tx else optax.sgd(0.1),
+                                       rng=state.rng
                                        )
+        return new_state
 
-    def bind_model(self):
+    def bind_model(self, model: nn.Module, state: TrainState):
         """
         Return a model with parameters bound to it. Enable an easier inference
         access
@@ -625,10 +635,10 @@ class TrainerModule(TrainerBaseModule):
         Returns:
           The model with parameters and evt. batch statistics bound to it.
         """
-        params = {'params': self.state.params}
-        if self.state.batch_stats:
+        params = {'params': state.params}
+        if state.batch_stats:
             params['batch_stats'] = self.batch_stats
-        return self.model.bind(params)
+        return model.bind(params)
 
     @classmethod
     def load_from_checkpoint(cls,
