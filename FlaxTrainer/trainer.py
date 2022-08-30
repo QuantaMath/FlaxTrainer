@@ -213,7 +213,12 @@ class TrainerModule(TrainerBaseModule):
                 json.dump(self.config, f, indent=4)
         self.log_dir = log_dir
 
-    def init_model(self, exmp_input: Any):
+    def init_model(
+        self,
+        model: nn.Module,
+        state: TrainState,
+        exmp_input: Any
+    ):
         """
         Create an initial training state with newly generated network parameters.
 
@@ -225,19 +230,25 @@ class TrainerModule(TrainerBaseModule):
         model_rng, init_rng = random.split(model_rng)
         exmp_input = [exmp_input] if not isinstance(exmp_input, (list, tuple)) else exmp_input
         # Run model initialization
-        variables = self.run_model_init(exmp_input, init_rng)
+        variables = self.run_model_init(
+            model, exmp_input, init_rng
+        )
         # Create default state. Optimizers is initialized later
-        self.state = TrainState(step = 0,
-                                apply_fn=self.model.apply,
+        new_state = TrainState(step = 0,
+                                apply_fn=model.apply,
                                 params=variables['params'],
                                 batch_stats=variables.get('batch_stats'),
                                 rng=model_rng,
                                 tx=None,
                                 opt_state=None)
+        
 
-    def run_model_init(self,
-                       exmp_input: Any,
-                       init_rng: Any) -> Dict:
+    def run_model_init(
+        self,
+        model: nn.Module,
+        exmp_input: Any,
+        init_rng: Any
+    ) -> Dict:
         """
         The model initialization call
 
@@ -249,7 +260,7 @@ class TrainerModule(TrainerBaseModule):
           The initialized variable dictionary
         """
 
-        return self.model.init(init_rng, *exmp_input, train=True)
+        return model.init(init_rng, *exmp_input, train=True)
 
     def print_tabulate(self,
                        exmp_input: Any):
@@ -260,9 +271,12 @@ class TrainerModule(TrainerBaseModule):
         """
         print(self.model.tabulate(random.PRNGKey(0), *exmp_input, train=True))
 
-    def init_optimizer(self,
-                       num_epochs: int,
-                       num_steps_per_epoch: int):
+    def init_optimizer(
+        self,
+        state: TrainState,
+        num_epochs: int,
+        num_steps_per_epoch: int
+    ):
         """
         Initializes the optimizer and learning_rate_shedular.
 
@@ -304,11 +318,13 @@ class TrainerModule(TrainerBaseModule):
             opt_class(lr_schedule, **hparams)
         )
         # initialize training stata
-        self.state = TrainState.create(apply_fn=self.state.apply_fn,
-                                       params=self.state.params,
-                                       batch_stats=self.state.batch_stats,
+        new_state = TrainState.create(apply_fn=state.apply_fn,
+                                       params=state.params,
+                                       batch_stats=state.batch_stats,
                                        tx=optimizer,
-                                       rng=self.state.rng)
+                                       rng=state.rng)
+        
+        return new_state
 
 
     # def create_jitted_functions(self):
@@ -348,11 +364,14 @@ class TrainerModule(TrainerBaseModule):
             return metrics
         raise NotImplementedError
 
-    def train_model(self,
-                    train_loader : Iterator,
-                    val_loader : Iterator,
-                    test_loader : Iterator | None = None,
-                    num_epochs : int = 500) -> Dict[str, Any]:
+    def train_model(
+        self,
+        model: nn.Module,
+        train_state: TrainState,
+        train_loader : Iterator,
+        val_loader : Iterator,
+        test_loader : Iterator | None = None,
+        num_epochs : int = 500) -> Dict[str, Any]:
         """
         Starts a training loop for the given number of epochs.
 
