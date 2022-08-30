@@ -37,3 +37,5 @@ class TrainState(train_state.TrainState):
     # You can further extend the TrainState by any additional part here
     # For example, rng to keep for init, dropout, etc.
     rng : Any = None
+    # Store model name for used by Logger and callback
+    model_class: str = None

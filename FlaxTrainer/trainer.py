@@ -106,8 +106,8 @@ class TrainerModule(TrainerBaseModule):
 
     def __init__(
         self,
-        model_class: nn.Module,
-        model_hparams: Dict[str, Any],
+        #model_class: nn.Module,
+        #model_hparams: Dict[str, Any],
         optimizer_hparams: Dict[str, Any],
         exmp_input: Any,
         callbacks: set[Callback] = set(),
@@ -137,22 +137,22 @@ class TrainerModule(TrainerBaseModule):
             on the validation set.
         """
         super(TrainerModule, self).__init__()
-        self.model_class = model_class
-        self.model_hparams = model_hparams
+        #self.model_class = model_class
+        #self.model_hparams = model_hparams
         self.optimizer_hparams = optimizer_hparams
         self.enable_progress_bar = enable_progress_bar
         self.debug = debug
         self.seed = seed
         self.check_val_every_n_epoch = check_val_every_n_epoch
-        self.exmp_input = exmp_input
+        #self.exmp_input = exmp_input
         
         self.callbacks = callbacks
         [callback.set_trainer(self) for callback in callbacks]
         [print(callback.trainer) for callback in callbacks]
         # Set of  hyperparameters to save
         self.config = {
-            'model_class': model_class.__name__,
-            'model_hparams': model_hparams,
+            #'model_class': model_class.__name__,
+            #'model_hparams': model_hparams,
             'optimizer_hparams': optimizer_hparams,
             'logger_params': logger_params,
             'enable_progress_bar': self.enable_progress_bar,
@@ -162,15 +162,15 @@ class TrainerModule(TrainerBaseModule):
         }
         self.config.update(kwargs)
         # Create empty model: no parameters yet
-        self.model = self.model_class(**self.model_hparams)
-        self.print_tabulate(exmp_input)
+        #self.model = self.model_class(**self.model_hparams)
         # Init trainer parts
         self.init_logger(logger_params)
         self.create_jitted_functions()
-        self.init_model(exmp_input)
+        # self.init_model(exmp_input)
 
     def init_logger(
         self,
+        state: TrainState,
         logger_params: Dict | None = None
         ):
         """3
@@ -186,7 +186,7 @@ class TrainerModule(TrainerBaseModule):
         if not log_dir:
             base_log_dir = logger_params.get('base_log_dir', 'checkpoints/')
             # Prepare logging
-            log_dir = os.path.join(base_log_dir, self.config['model_class'])
+            log_dir = os.path.join(base_log_dir, state.model_class)
             if 'logger_name' in logger_params:
                 log_dir = os.path.join(log_dir, logger_params['logger_name'])
             version = None
@@ -216,8 +216,8 @@ class TrainerModule(TrainerBaseModule):
     def init_model(
         self,
         model: nn.Module,
-        state: TrainState,
-        exmp_input: Any
+        exmp_input: Any,
+        tabulated: bool= True
     ):
         """
         Create an initial training state with newly generated network parameters.
@@ -239,8 +239,15 @@ class TrainerModule(TrainerBaseModule):
                                 params=variables['params'],
                                 batch_stats=variables.get('batch_stats'),
                                 rng=model_rng,
+                                model_class=model.__class__.__name__,
                                 tx=None,
                                 opt_state=None)
+        
+        self.init_logger(self.config['logger_params'], new_state)
+        if tabulated: 
+            self.print_tabulate(exmp_input)
+
+        return new_state
         
 
     def run_model_init(
@@ -262,14 +269,17 @@ class TrainerModule(TrainerBaseModule):
 
         return model.init(init_rng, *exmp_input, train=True)
 
-    def print_tabulate(self,
-                       exmp_input: Any):
+    def print_tabulate(
+        self,
+        model: nn.Module,
+        exmp_input: Any
+    ):
         """
         Print a summary of the Module represent as table
 
         Args: exmpt_input: An input to the model with which the shape are inferred.
         """
-        print(self.model.tabulate(random.PRNGKey(0), *exmp_input, train=True))
+        print(model.tabulate(random.PRNGKey(0), *exmp_input, train=True))
 
     def init_optimizer(
         self,
