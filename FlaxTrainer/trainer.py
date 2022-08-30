@@ -41,7 +41,7 @@ from jax._src.api import eval_shape
 import jax.numpy as jnp
 from jax import random
 
-from callbacks import Callback
+from FlaxTrainer.callbacks import Callback
 
 ## Flax (NN in JAX)
 try:
