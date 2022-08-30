@@ -23,5 +23,6 @@
 
 from . import trainer
 from . import trainstates
+from . import callbacks
 
 from .version import __version__
