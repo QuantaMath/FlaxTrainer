@@ -22,8 +22,7 @@
 
 
 from unittest.mock import Mock
-from callbacks import Callback
-#from ..FlaxTrainer.trainer import TrainerBaseModule
+from FlaxTrainer.callbacks import Callback
 
 class MockedCallback(object):
     def __init__(self, stop_train=True):
