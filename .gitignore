@@ -6,3 +6,10 @@ __pycache__/
 !**/__pycache__/
 saved_models/
 saved_models/MLPRegressor*
+
+build/
+build/*
+dist/
+dist/*
+FlaxTrainer.egg-info/
+FlaxTrainer.egg-info/*
