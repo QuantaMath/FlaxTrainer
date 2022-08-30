@@ -406,7 +406,7 @@ class TrainerModule(TrainerBaseModule):
 
             if not self.train:
                 break
-            train_metrics = self.train_epoch(new_state, train_loader, epoch_idx=epoch_idx)
+            train_metrics, new_state = self.train_epoch(new_state, train_loader, epoch_idx=epoch_idx)
             self.logger.log_metrics(train_metrics, step=epoch_idx)
             self.on_training_epoch_end(epoch_idx)
             # Validation every N epochs
@@ -465,7 +465,7 @@ class TrainerModule(TrainerBaseModule):
         metrics['epochs_time'] = time.time() - start_time
         
         [callback.on_train_epoch_end(trainer=self, epoch_idx=epoch_idx) for callback in self.callbacks]
-        return metrics
+        return metrics, state
 
 
     def eval_model(
