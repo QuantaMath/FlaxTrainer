@@ -239,7 +239,7 @@ class TrainerModule(TrainerBaseModule):
                                 params=variables['params'],
                                 batch_stats=variables.get('batch_stats'),
                                 rng=model_rng,
-                                model=model
+                                model=model,
                                 model_class=model.__class__.__name__,
                                 tx=None,
                                 opt_state=None)
