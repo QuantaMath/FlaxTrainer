@@ -80,7 +80,7 @@ class TrainerBaseModule(object):
         raise NotImplementedError
     
     def create_functions(self): #-> Callable[..., Any]:
-        raise NotImplemented
+        raise NotImplementedError
 
     def create_jitted_functions(self):
         
@@ -240,6 +240,7 @@ class TrainerModule(TrainerBaseModule):
                                 batch_stats=variables.get('batch_stats'),
                                 rng=model_rng,
                                 model_class=model.__class__.__name__,
+                                model_util_fn= Tuple[Callable] | None = None
                                 tx=None,
                                 opt_state=None)
         
@@ -410,6 +411,7 @@ class TrainerModule(TrainerBaseModule):
             self.logger.log_metrics(train_metrics, step=epoch_idx)
             self.on_training_epoch_end(epoch_idx)
             # Validation every N epochs
+            # FIXME: fix validation steps and total epochs steps problem 
             if epoch_idx % self.check_val_every_n_epoch == 0:
                 eval_metrics = self.eval_model(new_state, val_loader, log_prefix='val/')
                 self.on_validation_epoch_end(epoch_idx, eval_metrics, val_loader)

@@ -25,7 +25,7 @@
 # https://github.com/phlippe/uvadlc_notebooks/blob/master/docs/tutorial_notebooks/guide4/Research_Projects_with_JAX.ipynb
 # Authored by Phillip Lippe
 
-from typing import Any
+from typing import Any, Callable, Tuple
 from flax.training import train_state
 
 
@@ -39,3 +39,5 @@ class TrainState(train_state.TrainState):
     rng : Any = None
     # Store model name for used by Logger and callback
     model_class: str = None
+    # holding model misc function for futher usage
+    model_utils_fn: Tuple[Callable] | None = None
