@@ -239,8 +239,8 @@ class TrainerModule(TrainerBaseModule):
                                 params=variables['params'],
                                 batch_stats=variables.get('batch_stats'),
                                 rng=model_rng,
+                                model=model
                                 model_class=model.__class__.__name__,
-                                model_util_fn= Tuple[Callable] | None = None
                                 tx=None,
                                 opt_state=None)
         

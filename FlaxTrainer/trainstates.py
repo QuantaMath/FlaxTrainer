@@ -27,7 +27,7 @@
 
 from typing import Any, Callable, Tuple
 from flax.training import train_state
-
+import flax.linen as nn
 
 # TODO: Generalize the TrainStateClass
 class TrainState(train_state.TrainState):
@@ -40,4 +40,4 @@ class TrainState(train_state.TrainState):
     # Store model name for used by Logger and callback
     model_class: str = None
     # holding model misc function for futher usage
-    model_utils_fn: Tuple[Callable] | None = None
+    model: nn.Module | None = None
