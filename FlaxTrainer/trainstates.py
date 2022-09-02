@@ -39,5 +39,3 @@ class TrainState(train_state.TrainState):
     rng : Any = None
     # Store model name for used by Logger and callback
     model_class: str = None
-    # holding model misc function for futher usage
-    model: nn.Module | None = None
