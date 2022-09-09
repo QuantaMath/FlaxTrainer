@@ -42,7 +42,7 @@ class MLFlowLogger(LoggerBase):
 
         self.log_dir = log_dir
 
-        with mlflow.start_run() 
+        with mlflow.start_run():
             pass
         
     def log_params(self, args, **kwargs):
