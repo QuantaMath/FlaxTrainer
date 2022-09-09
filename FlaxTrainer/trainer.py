@@ -1,3 +1,30 @@
+# MIT License
+
+# Copyright (c) 2022 Gholamhossin Eslami
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+# This code inspired from the notebook:
+# https://github.com/phlippe/uvadlc_notebooks/blob/master/docs/tutorial_notebooks/guide4/Research_Projects_with_JAX.ipynb
+# Authored by Phillip Lippe
+
 import os
 import time
 import json
@@ -14,7 +41,7 @@ from jax._src.api import eval_shape
 import jax.numpy as jnp
 from jax import random
 
-from callbacks import Callback
+from FlaxTrainer.callbacks import Callback
 
 ## Flax (NN in JAX)
 try:
@@ -53,7 +80,7 @@ class TrainerBaseModule(object):
         raise NotImplementedError
     
     def create_functions(self): #-> Callable[..., Any]:
-        raise NotImplemented
+        raise NotImplementedError
 
     def create_jitted_functions(self):
         
@@ -79,10 +106,10 @@ class TrainerModule(TrainerBaseModule):
 
     def __init__(
         self,
-        model_class: nn.Module,
-        model_hparams: Dict[str, Any],
+        #model_class: nn.Module,
+        #model_hparams: Dict[str, Any],
         optimizer_hparams: Dict[str, Any],
-        exmp_input: Any,
+        #exmp_input: Any,
         callbacks: set[Callback] = set(),
         seed: int = 42,
         logger_params: Dict[str, Any] | None = None,
@@ -110,22 +137,22 @@ class TrainerModule(TrainerBaseModule):
             on the validation set.
         """
         super(TrainerModule, self).__init__()
-        self.model_class = model_class
-        self.model_hparams = model_hparams
+        #self.model_class = model_class
+        #self.model_hparams = model_hparams
         self.optimizer_hparams = optimizer_hparams
         self.enable_progress_bar = enable_progress_bar
         self.debug = debug
         self.seed = seed
         self.check_val_every_n_epoch = check_val_every_n_epoch
-        self.exmp_input = exmp_input
+        #self.exmp_input = exmp_input
         
         self.callbacks = callbacks
         [callback.set_trainer(self) for callback in callbacks]
         [print(callback.trainer) for callback in callbacks]
         # Set of  hyperparameters to save
         self.config = {
-            'model_class': model_class.__name__,
-            'model_hparams': model_hparams,
+            #'model_class': model_class.__name__,
+            #'model_hparams': model_hparams,
             'optimizer_hparams': optimizer_hparams,
             'logger_params': logger_params,
             'enable_progress_bar': self.enable_progress_bar,
@@ -135,16 +162,16 @@ class TrainerModule(TrainerBaseModule):
         }
         self.config.update(kwargs)
         # Create empty model: no parameters yet
-        self.model = self.model_class(**self.model_hparams)
-        self.print_tabulate(exmp_input)
+        #self.model = self.model_class(**self.model_hparams)
         # Init trainer parts
-        self.init_logger(logger_params)
+        #self.init_logger(logger_params)
         self.create_jitted_functions()
-        self.init_model(exmp_input)
+        # self.init_model(exmp_input)
 
     def init_logger(
         self,
-        logger_params: Dict | None = None
+        state: TrainState,
+        logger_params: Dict | None = None,
         ):
         """3
         Initializes of logger and creates a logging directory.
@@ -159,7 +186,7 @@ class TrainerModule(TrainerBaseModule):
         if not log_dir:
             base_log_dir = logger_params.get('base_log_dir', 'checkpoints/')
             # Prepare logging
-            log_dir = os.path.join(base_log_dir, self.config['model_class'])
+            log_dir = os.path.join(base_log_dir, state.model_class)
             if 'logger_name' in logger_params:
                 log_dir = os.path.join(log_dir, logger_params['logger_name'])
             version = None
@@ -186,7 +213,12 @@ class TrainerModule(TrainerBaseModule):
                 json.dump(self.config, f, indent=4)
         self.log_dir = log_dir
 
-    def init_model(self, exmp_input: Any):
+    def init_model(
+        self,
+        model: nn.Module,
+        exmp_input: Any,
+        tabulated: bool= True
+    ):
         """
         Create an initial training state with newly generated network parameters.
 
@@ -198,19 +230,32 @@ class TrainerModule(TrainerBaseModule):
         model_rng, init_rng = random.split(model_rng)
         exmp_input = [exmp_input] if not isinstance(exmp_input, (list, tuple)) else exmp_input
         # Run model initialization
-        variables = self.run_model_init(exmp_input, init_rng)
+        variables = self.run_model_init(
+            model, exmp_input, init_rng
+        )
         # Create default state. Optimizers is initialized later
-        self.state = TrainState(step = 0,
-                                apply_fn=self.model.apply,
+        new_state = TrainState(step = 0,
+                                apply_fn=model.apply,
                                 params=variables['params'],
                                 batch_stats=variables.get('batch_stats'),
                                 rng=model_rng,
+                                model_class=model.__class__.__name__,
                                 tx=None,
                                 opt_state=None)
+        
+        self.init_logger( new_state, self.config['logger_params'])
+        if tabulated: 
+            self.print_tabulate(model, exmp_input)
 
-    def run_model_init(self,
-                       exmp_input: Any,
-                       init_rng: Any) -> Dict:
+        return new_state
+        
+
+    def run_model_init(
+        self,
+        model: nn.Module,
+        exmp_input: Any,
+        init_rng: Any
+    ) -> Dict:
         """
         The model initialization call
 
@@ -222,20 +267,26 @@ class TrainerModule(TrainerBaseModule):
           The initialized variable dictionary
         """
 
-        return self.model.init(init_rng, *exmp_input, train=True)
+        return model.init(init_rng, *exmp_input, train=True)
 
-    def print_tabulate(self,
-                       exmp_input: Any):
+    def print_tabulate(
+        self,
+        model: nn.Module,
+        exmp_input: Any
+    ):
         """
         Print a summary of the Module represent as table
 
         Args: exmpt_input: An input to the model with which the shape are inferred.
         """
-        print(self.model.tabulate(random.PRNGKey(0), *exmp_input, train=True))
+        print(model.tabulate(random.PRNGKey(0), *exmp_input, train=True))
 
-    def init_optimizer(self,
-                       num_epochs: int,
-                       num_steps_per_epoch: int):
+    def init_optimizer(
+        self,
+        state: TrainState,
+        num_epochs: int,
+        num_steps_per_epoch: int
+    ):
         """
         Initializes the optimizer and learning_rate_shedular.
 
@@ -277,11 +328,13 @@ class TrainerModule(TrainerBaseModule):
             opt_class(lr_schedule, **hparams)
         )
         # initialize training stata
-        self.state = TrainState.create(apply_fn=self.state.apply_fn,
-                                       params=self.state.params,
-                                       batch_stats=self.state.batch_stats,
+        new_state = TrainState.create(apply_fn=state.apply_fn,
+                                       params=state.params,
+                                       batch_stats=state.batch_stats,
                                        tx=optimizer,
-                                       rng=self.state.rng)
+                                       rng=state.rng)
+        
+        return new_state
 
 
     # def create_jitted_functions(self):
@@ -321,11 +374,14 @@ class TrainerModule(TrainerBaseModule):
             return metrics
         raise NotImplementedError
 
-    def train_model(self,
-                    train_loader : Iterator,
-                    val_loader : Iterator,
-                    test_loader : Iterator | None = None,
-                    num_epochs : int = 500) -> Dict[str, Any]:
+    def train_model(
+        self,
+        model: nn.Module,
+        state: TrainState,
+        train_loader : Iterator,
+        val_loader : Iterator,
+        test_loader : Iterator | None = None,
+        num_epochs : int = 500) -> Dict[str, Any]:
         """
         Starts a training loop for the given number of epochs.
 
@@ -340,20 +396,23 @@ class TrainerModule(TrainerBaseModule):
           best model on the validation set.
         """
         # Create optimizer and the scheduler for the given number of epochs
-        self.init_optimizer(num_epochs, len(train_loader))
+        new_state = self.init_optimizer(state, num_epochs, len(train_loader))
         # Prepare training loop
         self.on_training_start()
+
+        
         best_eval_metrics = None
         for epoch_idx in self.tracker(range(1, num_epochs+1), desc='Epochs'):
 
             if not self.train:
                 break
-            train_metrics = self.train_epoch(train_loader, epoch_idx=epoch_idx)
+            train_metrics, new_state = self.train_epoch(new_state, train_loader, epoch_idx=epoch_idx)
             self.logger.log_metrics(train_metrics, step=epoch_idx)
             self.on_training_epoch_end(epoch_idx)
             # Validation every N epochs
+            # FIXME: fix validation steps and total epochs steps problem 
             if epoch_idx % self.check_val_every_n_epoch == 0:
-                eval_metrics = self.eval_model(val_loader, log_prefix='val/')
+                eval_metrics = self.eval_model(new_state, val_loader, log_prefix='val/')
                 self.on_validation_epoch_end(epoch_idx, eval_metrics, val_loader)
                 self.logger.log_metrics(eval_metrics, step=epoch_idx)
                 self.save_metrics(f'eval_epoch_{str(epoch_idx).zfill(3)}', eval_metrics)
@@ -361,23 +420,26 @@ class TrainerModule(TrainerBaseModule):
                 if self.is_new_model_better(eval_metrics, best_eval_metrics):
                     best_eval_metrics = eval_metrics
                     best_eval_metrics.update(train_metrics)
-                    self.save_model(step=epoch_idx)
+                    self.save_model(new_state, step=epoch_idx)
                     self.save_metrics('best_eval', eval_metrics)
         # Test best model if possible
         if test_loader is not None:
-            self.load_model()
-            test_metrics = self.eval_model(test_loader, log_prefix='test/')
+            self.load_model(model, new_state)
+            test_metrics = self.eval_model(new_state, test_loader, log_prefix='test/')
             self.logger.log_metrics(test_metrics, step=epoch_idx)
             self.save_metrics('test', test_metrics)
             best_eval_metrics.update(test_metrics)
         # Close logger
         self.logger.finalize('success')
         [callback.on_train_end() for callback in self.callbacks]
-        return best_eval_metrics
+        return best_eval_metrics, new_state
 
 
-    def train_epoch(self,
-                    train_loader: Iterator, epoch_idx: int) -> Dict[str, Any]:
+    def train_epoch(
+        self,
+        state: TrainState,
+        train_loader: Iterator,
+        epoch_idx: int) -> Dict[str, Any]:
         """
         Trains a model for one epoch.
 
@@ -390,26 +452,28 @@ class TrainerModule(TrainerBaseModule):
         """
 
         # Train model for one epoch, and log avg loss and accuracy
-
+        
         [callback.on_train_epoch_start() for callback in self.callbacks]
 
         metrics = defaultdict(float)
         num_train_steps = len(train_loader)
         start_time = time.time()
         for batch in self.tracker(train_loader, desc='Training', leave=False):
-            self.state, step_metrics = self.train_step(self.state, batch)
+            state, step_metrics = self.train_step(state, batch)
             for key in step_metrics:
                 metrics['train/' + key] += step_metrics[key] / num_train_steps
         metrics = {key: metrics[key].item() for key in metrics}
         metrics['epochs_time'] = time.time() - start_time
         
         [callback.on_train_epoch_end(trainer=self, epoch_idx=epoch_idx) for callback in self.callbacks]
-        return metrics
+        return metrics, state
 
 
-    def eval_model(self,
-                   data_loader: Iterator,
-                   log_prefix: str | None = '') -> Dict[str, Any]:
+    def eval_model(
+        self,
+        state: TrainState,
+        data_loader: Iterator,
+        log_prefix: str | None = '') -> Dict[str, Any]:
         """
         Evaluate the model of a dataset.
 
@@ -425,7 +489,7 @@ class TrainerModule(TrainerBaseModule):
         metrics = defaultdict(float)
         num_elements = 0
         for batch in data_loader:
-            step_metrics = self.eval_step(self.state, batch)
+            step_metrics = self.eval_step(state, batch)
             batch_size = batch[0].shape[0] if isinstance(batch, (list, tuple)) else batch.shape[0]
             for key in step_metrics:
                 metrics[key] += step_metrics[key] * batch_size
@@ -527,8 +591,10 @@ class TrainerModule(TrainerBaseModule):
         """
         pass
 
-    def save_model(self,
-                   step: int = 0):
+    def save_model(
+        self,
+        state: TrainState,
+        step: int = 0):
         """
         Save current training state at certain training iteration. Only the model
         parameters and batch statistics are saved to reduce memory footprint. To
@@ -540,28 +606,29 @@ class TrainerModule(TrainerBaseModule):
         """
         #[callback.on_save_checkpoint() for callback in callbacks]
         checkpoints.save_checkpoint(ckpt_dir=self.log_dir,
-                                    target={'params': self.state.params,
-                                            'batch_stats': self.state.batch_stats},
+                                    target={'params': state.params,
+                                            'batch_stats': state.batch_stats},
                                     step=step,
                                     overwrite=True
                                     )
 
 
-    def load_model(self):
+    def load_model(self, model: nn.Module, state: TrainState):
         """
         Load model parameters and batch statistics from the logging directory.
         """
         # [callback.on_load_checkpoint() for callback in callbacks]
         state_dict = checkpoints.restore_checkpoint(ckpt_dir=self.log_dir, target=None)
-        self.state = TrainState.create(apply_fn=self.model.apply,
+        new_state = TrainState.create(apply_fn=model.apply,
                                        params=state_dict['params'],
                                        batch_stats=state_dict['batch_stats'],
                                        #Optimizer will be overwritten when training, starts
-                                       tx=self.state.tx if self.state.tx else optax.sgd(0.1),
-                                       rng=self.state.rng
+                                       tx=state.tx if state.tx else optax.sgd(0.1),
+                                       rng=state.rng
                                        )
+        return new_state
 
-    def bind_model(self):
+    def bind_model(self, model: nn.Module, state: TrainState):
         """
         Return a model with parameters bound to it. Enable an easier inference
         access
@@ -569,10 +636,10 @@ class TrainerModule(TrainerBaseModule):
         Returns:
           The model with parameters and evt. batch statistics bound to it.
         """
-        params = {'params': self.state.params}
-        if self.state.batch_stats:
+        params = {'params': state.params}
+        if state.batch_stats:
             params['batch_stats'] = self.batch_stats
-        return self.model.bind(params)
+        return model.bind(params)
 
     @classmethod
     def load_from_checkpoint(cls,
