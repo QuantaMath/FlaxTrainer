@@ -62,9 +62,10 @@ import torch
 import torch.utils.data as data
 
 
-from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
+from pytorch_lightning.loggers import WandbLogger
 
 from .trainstates import TrainState
+from FlaxTrainer.loggers import TensorboardLogger
 
 class TrainerBaseModule(object):
     """ Base class of trainer module fo training flax based artificial neural network"""
@@ -195,7 +196,7 @@ class TrainerModule(TrainerBaseModule):
         # Create logger object
         logger_type = logger_params.get('logger_type', 'TensorBoard').lower()
         if logger_type == 'tensorboard':
-            self.logger = TensorBoardLogger(save_dir=log_dir,
+            self.logger = TensorboardLogger(save_dir=log_dir,
                                             version=version,
                                             name='')
         elif logger_type == 'wandb':
@@ -226,6 +227,7 @@ class TrainerModule(TrainerBaseModule):
           exmp_input: An input to the model with which the shape are inferred.
         """
         # Prepare PRNG and input
+
         model_rng = random.PRNGKey(self.seed)
         model_rng, init_rng = random.split(model_rng)
         exmp_input = [exmp_input] if not isinstance(exmp_input, (list, tuple)) else exmp_input
@@ -396,6 +398,8 @@ class TrainerModule(TrainerBaseModule):
           best model on the validation set.
         """
         # Create optimizer and the scheduler for the given number of epochs
+        self.logger.initialize()
+
         new_state = self.init_optimizer(state, num_epochs, len(train_loader))
         # Prepare training loop
         self.on_training_start()
@@ -407,7 +411,7 @@ class TrainerModule(TrainerBaseModule):
             if not self.train:
                 break
             train_metrics, new_state = self.train_epoch(new_state, train_loader, epoch_idx=epoch_idx)
-            self.logger.log_metrics(train_metrics, step=epoch_idx)
+            self.logger.log_metrics(value=train_metrics, step=epoch_idx)
             self.on_training_epoch_end(epoch_idx)
             # Validation every N epochs
             # FIXME: fix validation steps and total epochs steps problem 

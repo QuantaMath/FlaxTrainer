@@ -26,6 +26,9 @@ class LoggerBase():
     def __init__(self, args, **kwargs):
         raise NotImplementedError
 
+    def initialize(self, args, **kwargs):
+        raise NotImplementedError
+
     def log_params(self, args, **kwargs):
         raise NotImplementedError
 
@@ -40,4 +43,7 @@ class LoggerBase():
         raise NotImplementedError
 
     def hparams(self, hparams):
+        raise NotImplementedError
+
+    def finalize(self, msg:str):
         raise NotImplementedError

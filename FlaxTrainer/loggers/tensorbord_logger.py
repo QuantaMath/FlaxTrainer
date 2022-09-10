@@ -20,9 +20,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from asyncio.log import logger
-from loggers import LoggerBase
+import os
+import re
 
+from FlaxTrainer.loggers import LoggerBase
 from flax.metrics.tensorboard import SummaryWriter
 
 
@@ -30,7 +31,9 @@ class TensorboardLogger(LoggerBase):
     
     def __init__(
         self,
-        log_dir: str,
+        save_dir: str,
+        version: str,
+        name:str,
         auto_flush: bool = True
     ):
         """
@@ -39,10 +42,33 @@ class TensorboardLogger(LoggerBase):
           log_dir: 
           auto_flush: 
         """  
+        
+        self.log_dir = save_dir
+        self.version = 'version' if version is None else version
+        self.name = name
+        self.auto_flush = auto_flush
 
-        self.log_dir = log_dir
-        self.logger = SummaryWriter(log_dir=self.log_dir, auto_flush=auto_flush)
-    
+
+
+        
+    def initialize(self):
+        self.version_i = 0
+        dir_list = os.listdir(self.log_dir)
+        version_list = [
+            int(d.split('_')[1]) for d in dir_list
+            if d.split('_')[0]==self.version 
+            and re.match(r'^\d*$', d.split('_')[1])
+        ]
+        
+        if version_list:
+            self.version_i = max(version_list) + 1
+
+        v = ''.join([self.version,'_', str(self.version_i)])
+        self.logger = SummaryWriter(
+            log_dir=os.path.join(self.log_dir,v),
+            auto_flush=self.auto_flush
+        )
+
     def log_params(self, args, **kwargs):
         pass
 
@@ -50,7 +76,7 @@ class TensorboardLogger(LoggerBase):
         pass
 
     def log_metrics(
-        self, name: str, value:float , epoch: int
+        self,value:dict , step: int
     ):
         """
         Record metric data at epoch b
@@ -59,8 +85,10 @@ class TensorboardLogger(LoggerBase):
           name: metric name
           value: metric value
           epoch: train epoch number
+
         """
-        self.logger.scalar(name, value, epoch)
+        name = list(value)[0]
+        self.logger.scalar(name, value[name], step)
 
     def log_artifacts(self, args, **kwargs):
         pass
@@ -74,3 +102,9 @@ class TensorboardLogger(LoggerBase):
         self.logger.hparams(
             hparams=hparams
         )
+    #FIXME: after finalize new folder created therfore it should be create the folder after 
+    # new train process
+    def finalize(self, msg):
+        #self.logger.close()
+        self.logger.close()
+        
