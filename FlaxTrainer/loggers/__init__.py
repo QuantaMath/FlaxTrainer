@@ -1,2 +1,2 @@
 from .loggers import LoggerBase
-from tensorbord_logger import TensorboardLogger
+from .tensorbord_logger import TensorboardLogger

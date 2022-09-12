@@ -224,7 +224,9 @@ class TrainerModule(TrainerBaseModule):
         Create an initial training state with newly generated network parameters.
 
         Args:
+          model: flax NN module class which 
           exmp_input: An input to the model with which the shape are inferred.
+          tabulated:
         """
         # Prepare PRNG and input
 
